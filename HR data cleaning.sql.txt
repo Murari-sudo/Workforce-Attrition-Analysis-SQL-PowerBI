@@ -1,0 +1,358 @@
+select * from human_resources hr ;
+
+create table Hr as
+select* from human_resources;
+
+/* we have checked how many rows are there and the raw file has 22,214 rows  */
+
+select count(*) from human_resources;
+
+/* now we will subtract rows from total rows to find missing or null values  */
+
+select count(*) as total_rows,
+count(*) - count(id) as missing_id,
+count(*) - count(first_name) as missing_first_name,
+count(*) - count(last_name) as missing_last_name,
+count(*) - count(birthdate) as missing_birth_date,
+count(*) - count(gender) as missing_gender,
+count(*) - count(race) as missing_race,
+count(*) - count(department) as missing_department,
+count(*) - count(jobtitle) as missing_jobtitle,
+count(*) - count(location) as missing_location,
+count(*) - count(hire_date) as missing_hire_date,
+count(*) - count(location_city) as missing_location_city,
+count(*) - count(location_state) as missing_location_state
+from human_resources;  -- since all columns are showing zero it means no null or missing data.
+
+
+
+/* Here as we can se there is inconsistency in birth date, so first we will correct it  */
+
+select  birthdate from human_resources;
+
+-- we will use distinct birth date to see birth date is in how many styles
+
+select distinct birthdate
+from human_resources hr 
+limit 50;
+
+/* first we will check whether the query is correct using select then execute it */
+
+select birthdate as original_date,
+-- 1. Handling 4 digit year dates with slashes
+case when birthdate like '%/%/%' then to_date(birthdate,'MM/DD/YYYY')
+when birthdate like '%-%-____' then to_date(birthdate,'MM-DD-YYYY')
+/* 2. Handling two digit year dates , since if D.O.B is more than 50 years then we will subtract100
+ because otherwise it will take value in future like 2065 instead of 1965    */
+ when birthdate like '%-%-%' AND to_date(birthdate, 'MM-DD-YY') > Current_Date 
+ then to_date(birthdate, 'MM-DD-YY') - interval '100 years'
+ 
+ when birthdate like('%-%-%') then to_date(birthdate,'MM-DD-YY')
+
+else null
+end as preview_converted_date
+from human_resources;
+
+-- now we are catching unhandled bad rows
+
+select birthdate
+from human_resources hr 
+where birthdate not like '%/%/%'
+and birthdate not like '%-%-%';-- since it came clean means we had date only in those two formats
+
+-- now we are going to alter the table
+
+alter table  human_resources 
+alter column birthdate type date
+Using( case
+	when birthdate like '%/%/%' then to_date(birthdate, 'MM/DD/YYYY') 
+	when birthdate like '%-%-____' then to_date(birthdate, 'MM-DD-YYYY') 
+	when birthdate like '%-%-%' and to_date(birthdate, 'MM-DD-YY') > current_date
+	then to_date(birthdate, 'MM-DD-YY') - interval '100 years'
+	when birthdate like '%-%-%' then to_date(birthdate, 'MM-DD-YY')
+	else null
+	
+end);
+
+select * from human_resources;
+
+-- now we will correct hire date
+
+-- first we will check how many types of hire date are there
+
+select distinct hire_date from human_resources;
+
+select count(hire_date) from human_resources 
+where hire_date like '%-%-00'; -- 71 dates are with year as 00
+
+select hire_date from human_resources ;
+
+-- now we will catch unhandled bad rows, means dates which are in weird formats
+
+select hire_date from human_resources hr
+where hire_date not like '%/%/%'
+and hire_date not like '%-%-%'; -- since it came clean it means dates are in MM-DD-YYYY or DD-MM-YY or YYYY format
+
+/* Before modifying we will check whether the code is correct and having the effect or not  */
+
+select * from human_resources;
+
+select hire_date as original_date,
+case
+	-- Handling 4 digit years with slashes
+	when hire_date like '%/%/____' then to_date(hire_date, 'MM/DD/YYYY')
+	when hire_date like '%-%-____' then to_date(hire_date, 'MM-DD-YYYY')
+	-- handling 2 digit years with slashes
+	when hire_date like '%/%/__' and to_date(hire_date, 'MM/DD/YY') > current_date
+	then to_date(hire_date, 'MM/DD/YY') - interval '100 years'
+	when hire_date like '%/%/__' then to_date (hire_date, 'MM/DD/YY')
+	-- handling 2 year dates with hyphen
+	when hire_date like '%-%-__' and to_date(hire_date, 'MM-DD-YY') > current_date
+	then to_date(hire_date, 'MM-DD-YY') - interval '100 years'
+	when hire_date like '%-%-__' then to_date (hire_date, 'MM-DD-YY')
+	else null
+end as preview_hire_date
+from human_resources; -- since everything is correct here, now we will alter hire_date table
+
+
+/* Altering hire_date table */
+
+alter table human_resources 
+alter column hire_date type date
+Using(case
+	-- Handling 4 digit years
+	when hire_date like '%/%/____' then to_date(hire_date, 'MM/DD/YYYY')
+	when hire_date like '%-%-____' then to_date(hire_date, 'MM-DD-YYYY')
+	-- Handling 2 digit years with slash
+	when hire_date like '%/%/__' and to_date(hire_date, 'MM/DD/YY') > current_date
+	then to_date(hire_date, 'MM/DD/YY') - interval '100 years'
+	when hire_date like '%/%/__' then to_date(hire_date, 'MM/DD/YY')
+	-- Handling 2 digit year with hyphen
+	when hire_date like '%-%-__' and to_date(hire_date, 'MM-DD-YY') > current_date
+	then to_date(hire_date, 'MM-DD-YY') - interval '100 years'
+	when hire_date like '%-%-__' then to_date(hire_date, 'MM-DD-YY')
+	else null
+	end);
+
+select * from human_resources hr ; -- hire_date is also cleaned
+
+/* now as everything is cleaned, i wll delete duplicate rows  */
+
+select *,
+row_number() over(partition by id,first_name,last_name,birthdate,gender,race,
+department,jobtitle,location,hire_date,location_city,location_state
+order by id) as row_num
+from human_resources; 
+
+with duplicate_cte as(
+select *,
+row_number() over(partition by id, first_name, last_name, birthdate, gender, race,
+department, jobtitle, location, hire_date, location_city, location_state
+order by id) as row_num
+from human_resources)
+select * from duplicate_cte
+where row_num >1; -- it is showing zero/nothing means no duplicate data.
+
+/* If duplicates had been present, you would use that same CTE structure and replace SELECT * with DELETE to remove them instantly while keeping one original copy.
+
+Here is how the exact DELETE statement works:
+
+WITH duplicate_cte AS (
+    SELECT id,
+        ROW_NUMBER() OVER(
+            PARTITION BY id, first_name, last_name, birthdate, gender, race,
+                         department, jobtitle, location, hire_date, location_city, location_state
+            ORDER BY id
+        ) AS row_num
+    FROM human_resources
+)
+DELETE FROM human_resources
+WHERE id IN (
+    SELECT id 
+    FROM duplicate_cte 
+    WHERE row_num > 1
+); 
+
+How this works:
+row_num = 1: The first occurrence of the record is kept safe.
+
+row_num > 1: Every extra copy (2nd, 3rd duplicate, etc.) is identified by the subquery 
+and deleted from human_resources.    */
+
+
+
+-- just to be sure no duplicate data is there
+
+select id, count(*)
+from human_resources hr 
+group by hr.id 
+having count(*) >1; -- here also it is showing zero/nothing means no duplicate data.
+
+select * from human_resources hr ;
+
+-- now we are modifying term date table
+
+select termdate
+from human_resources hr 
+where  termdate is null or termdate = ''
+limit 10; -- it is coming clean means term date is there with empty strings
+
+-- now we are going to alter termdate column
+
+alter table human_resources 
+alter column termdate type date
+using nullif(termdate, '')::timestamp::date;
+/* here in this above formula we have said if term date is empty string then make it null
+  if notconvert varchar termdate to time stamp double semicolon and cast function are same since
+  cast is ANSI function it works across and then convert timestamp to date
+ */
+
+select * from human_resources hr ;
+
+-- we are adding an age column
+
+alter table human_resources 
+add column age int;
+
+update human_resources hr 
+set age = extract(year from age(current_date , hr.birthdate ));
+
+select birthdate, age from human_resources hr ;
+
+select * from human_resources hr 
+where age < 18; -- since no one age is less than 18 it means our brithdate etc is correct
+ 
+
+-- Questions 
+
+-- 1.what is the gender breakdown of employees of the company(count no. of employees by gender)
+
+select gender, count (*) from human_resources hr 
+where age >=18 and hr.termdate is null
+group by gender;
+
+--2. what is race/ethnicity of employees in the company
+
+select race, count(*) from human_resources hr 
+where age >=18 and termdate is null
+group by race
+order by count(*) desc;
+	
+-- what is age distribution of employees in the company
+
+select min(age), max(age)
+from human_resources hr 
+where age>=18 and termdate is null;
+
+select 
+case
+when age >=18 and age <=24 then '18-24'
+when age >=25 and age <=34 then '25-34'
+when age >=35 and age <=45 then '35-45'
+when age >=36 and age <=46 then '36-46'
+when age >=46 and age <=56 then '46-56'
+when age >=56 and age <=65 then '56-65'
+else '65+'
+end as age_group,
+count(*) as count
+from human_resources hr 
+where age>=18 and termdate is null 
+group by age_group 
+order by age_group;
+
+-- now we are dividing age group with gender
+
+select 
+case
+when age >=18 and age <=24 then '18-24'
+when age >=25 and age <=34 then '25-34'
+when age >=35 and age <=45 then '35-45'
+when age >=36 and age <=46 then '36-46'
+when age >=46 and age <=56 then '46-56'
+when age >=56 and age <=65 then '56-65'
+else '65+'
+end as age_group, hr.gender,
+count(*) as count
+from human_resources hr 
+where age>=18 and termdate is null 
+group by age_group , hr.gender 
+order by age_group, gender;
+
+
+-- how many employees work at headquarter V/s remote location
+
+select location, count(*) as total_employees
+from human_resources hr 
+where age >=18 and termdate is null
+group by location;
+
+
+-- what is the average length of employment of employees who have been terminated
+
+select round(AVG(termdate-hr.hire_date)/365,0) as avg_employment_period
+from human_resources hr 
+where termdate is not null and termdate <= current_date and age>=18;
+
+-- How does gender distribution vary across department and title
+
+select department, gender,count(*)
+from human_resources hr 
+where age >=18 and hr.termdate is null
+group by department, gender  
+order by department;
+
+-- what is the distribution of job titles across the company
+
+select jobtitle, count(*) as count
+from human_resources hr 
+where age >=18 and hr.termdate is null 
+group by hr.jobtitle 
+order by hr.jobtitle ;
+
+--which department has highest turnover rate
+
+select department,
+ total_count,
+ terminated_count,
+ round(terminated_count*1.0/total_count,2) as termination_rate
+ from(
+ select department,
+ count(*) as total_count,
+ sum(case when termdate is not null and termdate <= current_date then 1 else 0 end) as terminated_count
+ from human_resources where age >= 18
+ group by department) as subquery
+ order by termination_rate desc;
+
+-- what is distribution of employees across location city and state
+
+select location_city, location_state, count(*) as count
+from human_resources hr 
+where age>=18 and termdate is null 
+group by hr.location_city,hr.location_state 
+order by count desc;
+
+-- How has teh company's employee count changed over time based on hire and term dates
+
+select 
+year,
+hires,
+terminations,
+hires - terminations as net_change,
+round((hires - terminations)*100/hires,2) as net_change_percent
+from(
+select
+extract (year from hire_date) as year,
+count(*) as hires,
+sum(case when termdate is not null and termdate <= current_date then 1 else 0 end) as terminations
+from human_resources
+where age >= 18
+group by year
+) as sub_query
+order by year asc;
+
+-- what is the tenure distribution of each department
+
+select department, round(AVG((termdate - hire_date)*1)/365,2) as avg_tenure
+from human_resources hr 
+where termdate is not null and termdate <= current_date  and age >=18
+group by department;
